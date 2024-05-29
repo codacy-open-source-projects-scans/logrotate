@@ -416,14 +416,14 @@ file for the omitted attributes.  This option can be disabled using the
 New log files are not created (this overrides the \fBcreate\fR option).
 
 .TP
-\fBcreateolddir \fImode\fR \fIowner\fR \fIgroup\fR
+\fBcreateolddir \fImode\fR \fR[\fIowner\fR \fR[\fIgroup\fR]\fR], \fBcreateolddir \fR[\fIowner\fR \fR[\fIgroup\fR]\fR]
 If the directory specified by \fBolddir\fR directive does not exist, it is
 created. \fImode\fR specifies the mode for the \fBolddir\fR directory
 in octal (the same as \fBchmod\fR(2)), \fIowner\fR specifies the user
 who will own the \fBolddir\fR directory, and \fIgroup\fR specifies the group
-the \fBolddir\fR directory will belong to (see the section \fBUSER AND GROUP
-\fR for details).  This option can be disabled using
-the \fBnocreateolddir\fR option.
+the \fBolddir\fR directory will belong to (see the section \fBUSER AND GROUP\fR
+for details).  If \fImode\fR is not specified, \fB0755\fR is assumed.
+This option can be disabled using the \fBnocreateolddir\fR option.
 
 .TP
 \fBnocreateolddir\fR
@@ -587,7 +587,7 @@ Do not archive old versions of log files with date extension
 .TP
 \fBdateformat\fR \fIformat_string\fR
 Specify the extension for \fBdateext\fR using the notation similar to
-\fBstrftime\fR(3) function.  Only %Y %m %d %H %M %S %V and %s specifiers are
+\fBstrftime\fR(3) function.  Only %Y %m %d %H %M %S %V %s and %z specifiers are
 allowed.
 The default value is \-%Y%m%d except hourly, which uses \-%Y%m%d%H as default
 value.  Note that also the character separating log name from the extension is
