@@ -221,10 +221,10 @@ static int switch_user_back_permanently(void) {
 }
 
 static int open_logfile(const char *path, const struct logInfo *log, int write_access) {
-    int fd;
+    int fd, flags;
     struct stat sb;
 
-    fd = open(path, O_NOFOLLOW | (write_access ? O_RDWR : O_RDONLY));
+    fd = open(path, O_NOFOLLOW | O_NOCTTY | O_NONBLOCK | (write_access ? O_RDWR : O_RDONLY));
     if (fd < 0)
         return fd;
 
@@ -242,6 +242,19 @@ static int open_logfile(const char *path, const struct logInfo *log, int write_a
     if (sb.st_nlink != 1 && !(log->flags & LOG_FLAG_ALLOWHARDLINK)) {
         close(fd);
         errno = ENOTSUP;
+        return -1;
+    }
+
+    /*
+     * Unset O_NONBLOCK for portability, since O_NONBLOCK is unspecified for
+     * regular files by POSIX.
+     */
+    if ((flags = fcntl(fd, F_GETFL)) == -1) {
+        close(fd);
+        return -1;
+    }
+    if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+        close(fd);
         return -1;
     }
 
@@ -1780,7 +1793,7 @@ static int prerotateSingleLog(const struct logInfo *log, unsigned logNum,
         while (*dext != '\0') {
             /* Will there be a space for a char and '\0'? */
             if (j >= (sizeof(dext_pattern) - 1) ||
-                i >= (sizeof(dformat) - 1)) {
+                i >= (sizeof(dformat) - 2)) {
                 message(MESS_ERROR, "Date format %s is too long\n",
                         log->dateformat);
                 return 1;
@@ -2321,7 +2334,7 @@ static int postrotateSingleLog(const struct logInfo *log, unsigned logNum,
     }
 
     if (!hasErrors && log->logAddress) {
-        char *mailFilename;
+        const char *mailFilename;
 
         if (log->flags & LOG_FLAG_MAILFIRST)
             mailFilename = rotNames->firstRotated;
@@ -2437,7 +2450,7 @@ static int rotateLogSet(const struct logInfo *log, int force)
     }
 
     for (i = 0; i < log->numFiles; i++) {
-        struct logState *logState;
+        const struct logState *logState;
         logHasErrors[i] = findNeedRotating(log, i, force);
         hasErrors |= logHasErrors[i];
 
@@ -2566,10 +2579,10 @@ static int rotateLogSet(const struct logInfo *log, int force)
                 message(MESS_DEBUG, "not running postrotate script, "
                         "since no logs were rotated\n");
             } else {
-                char *logfn = (log->flags & LOG_FLAG_SHAREDSCRIPTS) ? log->pattern : log->files[j];
+                const char *logfn = (log->flags & LOG_FLAG_SHAREDSCRIPTS) ? log->pattern : log->files[j];
 
                 /* It only makes sense to pass in a final rotated filename if scripts are not shared */
-                char *logrotfn = (log->flags & LOG_FLAG_SHAREDSCRIPTS) ? NULL : rotNames[j]->finalName;
+                const char *logrotfn = (log->flags & LOG_FLAG_SHAREDSCRIPTS) ? NULL : rotNames[j]->finalName;
 
                 message(MESS_DEBUG, "running postrotate script\n");
                 if (runScript(log, logfn, logrotfn, log->post)) {
