@@ -1509,6 +1509,7 @@ static int findNeedRotating(const struct logInfo *log, unsigned logNum, int forc
     } else if (state->lastRotated.tm_year != now.tm_year ||
             state->lastRotated.tm_mon != now.tm_mon ||
             state->lastRotated.tm_mday != now.tm_mday ||
+            state->lastRotated.tm_min != now.tm_min ||
             state->lastRotated.tm_hour != now.tm_hour) {
         long days;
         switch (log->criterium) {
@@ -1539,6 +1540,18 @@ static int findNeedRotating(const struct logInfo *log, unsigned logNum, int forc
                             "which is less than an hour ago)\n", 1900 + state->lastRotated.tm_year,
                             1 + state->lastRotated.tm_mon, state->lastRotated.tm_mday,
                             state->lastRotated.tm_hour, state->lastRotated.tm_min);
+                }
+                break;
+            case ROT_MINUTES:
+                if (((intmax_t)difftime(nowSecs, mktime(&state->lastRotated)) / 60) > log->minutes) {
+                    state->doRotate = 1;
+                }
+                if (!state->doRotate) {
+                    message(MESS_DEBUG, "  log does not need rotating "
+                            "(log has been rotated at %d-%02d-%02d %02d:%02d, "
+                            "which is less than or equal %u minutes ago)\n", 1900 + state->lastRotated.tm_year,
+                            1 + state->lastRotated.tm_mon, state->lastRotated.tm_mday,
+                            state->lastRotated.tm_hour, state->lastRotated.tm_min, log->minutes);
                 }
                 break;
             case ROT_DAYS:
@@ -1831,16 +1844,21 @@ static int prerotateSingleLog(const struct logInfo *log, unsigned logNum,
             if (*dext == '%') {
                 switch (*(dext + 1)) {
                     case 'Y':
+                    case 'G':
                         strncat(dext_pattern, "[0-9][0-9]",
                                 sizeof(dext_pattern) - strlen(dext_pattern) - 1);
                         j += 10; /* strlen("[0-9][0-9]") */
                         /* FALLTHRU */
+                    case 'y':
+                    case 'g':
                     case 'm':
                     case 'd':
                     case 'H':
                     case 'M':
                     case 'S':
                     case 'V':
+                    case 'U':
+                    case 'W':
                         strncat(dext_pattern, "[0-9][0-9]",
                                 sizeof(dext_pattern) - strlen(dext_pattern) - 1);
                         j += 10;
@@ -1852,8 +1870,26 @@ static int prerotateSingleLog(const struct logInfo *log, unsigned logNum,
                         dformat[i++] = *(dext++);
                         dformat[i] = *dext;
                         break;
+                    case 'j':
+                        strncat(dext_pattern, "[0-9][0-9]",
+                                sizeof(dext_pattern) - strlen(dext_pattern) - 1);
+                        j += 10; /* strlen("[0-9][0-9]") */
+                        /* FALLTHRU */
+                    case 'u':
+                    case 'w':
+                        strncat(dext_pattern, "[0-9]",
+                                sizeof(dext_pattern) - strlen(dext_pattern) - 1);
+                        j += 5;
+                        if (j >= (sizeof(dext_pattern) - 1)) {
+                            message(MESS_ERROR, "Date format %s is too long\n",
+                                    log->dateformat);
+                            return 1;
+                        }
+                        dformat[i++] = *(dext++);
+                        dformat[i] = *dext;
+                        break;
                     case 's':
-                        /* End of year 2293 this pattern does not work. */
+                        /* End of year 2286 this pattern does not work. */
                         strncat(dext_pattern,
                                 "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",
                                 sizeof(dext_pattern) - strlen(dext_pattern) - 1);
@@ -1899,6 +1935,11 @@ static int prerotateSingleLog(const struct logInfo *log, unsigned logNum,
             /* hourly adds another two digits */
             final_dformat = "-%Y%m%d%H";
             strncpy(dext_pattern, "-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",
+                    sizeof(dext_pattern));
+        } else if (log->criterium == ROT_MINUTES) {
+            /* minutes adds another four digits */
+            final_dformat = "-%Y%m%d%H%M";
+            strncpy(dext_pattern, "-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",
                     sizeof(dext_pattern));
         } else {
             /* The default dateformat and glob pattern */
@@ -2400,6 +2441,9 @@ static int rotateLogSet(const struct logInfo *log, int force)
         switch (log->criterium) {
             case ROT_HOURLY:
                 message(MESS_DEBUG, "hourly ");
+                break;
+            case ROT_MINUTES:
+                message(MESS_DEBUG, "after %u minutes ", log->minutes);
                 break;
             case ROT_DAYS:
                 message(MESS_DEBUG, "after %jd days ", (intmax_t)log->threshold);
